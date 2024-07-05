@@ -1,0 +1,10 @@
+# CMake Tools Integration for clangd
+
+Basic integration of the [cmake-tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools) extension for [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd).
+
+This extension passes the code model to clangd, but **does not set the correct resource directory**. Therefore, this integration serves as an alternative way to export `compile_commands.json` when you are using CMake.
+
+
+
+**This integration required clangd with merged PR [#575](https://github.com/clangd/vscode-clangd/pull/575)** (clangd 0.1.29 or newer)
+

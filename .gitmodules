@@ -1,0 +1,3 @@
+[submodule "vscode-clangd"]
+	path = vscode-clangd
+	url = https://github.com/clangd/vscode-clangd.git

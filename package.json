@@ -1,0 +1,66 @@
+{
+  "name": "vscode-clangd-cmake",
+  "displayName": "clangd: CMake integration",
+  "description": "Add CMake integration for clangd",
+  "author": "SR_team",
+  "publisher": "sr-team",
+  "license": "MIT",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sr-tream/vscode-clangd-cmake.git"
+  },
+  "engines": {
+    "vscode": "^1.65.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "C",
+    "C++",
+    "CUDA",
+    "clang",
+    "clangd",
+    "cmake"
+  ],
+  "activationEvents": [
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onLanguage:cuda-cpp",
+    "onLanguage:objective-c",
+    "onLanguage:objective-cpp"
+  ],
+  "main": "./out/extension.js",
+  "exclude": [
+    "./vscode-clangd/**"
+  ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "@clangd/vscode-clangd": "./vscode-clangd/api",
+    "vscode-languageclient": "8.0.2",
+    "vscode-cmake-tools": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.65.0",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.11.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0"
+  },
+  "extensionDependencies": [
+    "llvm-vs-code-extensions.vscode-clangd",
+    "ms-vscode.cmake-tools"
+  ]
+}
