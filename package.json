@@ -35,6 +35,19 @@
   "exclude": [
     "./vscode-clangd/**"
   ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "clangd: CMake integration",
+      "properties": {
+        "clangd.resourceDir.passForClangToolchains": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server."
+        }
+      }
+    }
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
