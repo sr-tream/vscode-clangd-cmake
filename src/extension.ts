@@ -7,19 +7,18 @@ import type { ClangdApiV1, ClangdExtension } from '@clangd/vscode-clangd';
 
 const CLANGD_EXTENSION = 'llvm-vs-code-extensions.vscode-clangd';
 const CLANGD_API_VERSION = 1;
+const CLANGD_WAIT_TIME_MS = 200;
+
+let integrationInstance: CMakeToolsIntegration | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
-	const clangdExtension = vscode.extensions.getExtension<ClangdExtension>(CLANGD_EXTENSION);
-	if (!clangdExtension) {
-		return undefined;
-	}
-	if (!clangdExtension.isActive) {
-		await clangdExtension.activate();
-	}
-	const api = clangdExtension.exports.getApi(CLANGD_API_VERSION);
+	integrationInstance = new CMakeToolsIntegration();
+}
 
-	const feature = new CMakeToolsFeature(api);
-	api.languageClient.registerFeature(feature);
+export function deactivate() {
+	if (integrationInstance) {
+		integrationInstance.dispose();
+	}
 }
 
 namespace protocol {
@@ -50,14 +49,15 @@ namespace protocol {
 
 
 
-class CMakeToolsFeature implements vscodelc.StaticFeature {
+class CMakeToolsIntegration implements vscode.Disposable {
 	private projectChange: vscode.Disposable = { dispose() { } };
 	private codeModelChange: vscode.Disposable | undefined;
 	private cmakeTools: api.CMakeToolsApi | undefined;
 	private project: api.Project | undefined;
 	private codeModel: Map<string, protocol.ClangdCompileCommand> | undefined;
+	private clangd: ClangdApiV1 | undefined;
 
-	constructor(private clangd: ClangdApiV1) {
+	constructor() {
 		let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
 		if (cmakeTools === undefined)
 			return;
@@ -76,17 +76,22 @@ class CMakeToolsFeature implements vscodelc.StaticFeature {
 			}
 		});
 	}
-
-	fillClientCapabilities(_capabilities: vscodelc.ClientCapabilities) { }
-	fillInitializeParams(_params: vscodelc.InitializeParams) { }
-
-	initialize(capabilities: vscodelc.ServerCapabilities,
-		_documentSelector: vscodelc.DocumentSelector | undefined) { }
-	getState(): vscodelc.FeatureState { return { kind: 'static' }; }
 	dispose() {
 		if (this.codeModelChange !== undefined)
 			this.codeModelChange.dispose();
 		this.projectChange.dispose();
+	}
+
+	async getClangd() {
+		if (this.clangd == undefined || this.clangd.languageClient.state === vscodelc.State.Stopped) {
+			const clangdExtension = vscode.extensions.getExtension<ClangdExtension>(CLANGD_EXTENSION);
+			if (!clangdExtension) {
+				throw new Error('Could not find clangd extension');
+			}
+			this.clangd = clangdExtension.exports.getApi(CLANGD_API_VERSION);
+		}
+
+		return this.clangd;
 	}
 
 	async onActiveProjectChanged(path: vscode.Uri | undefined) {
@@ -204,7 +209,13 @@ class CMakeToolsFeature implements vscodelc.StaticFeature {
 					request.settings.compilationDatabaseChanges, { [file]: cc })
 			});
 
-		this.clangd.languageClient.sendNotification(
-			protocol.DidChangeConfigurationRequest.type, request);
+		const lc = (await this.getClangd()).languageClient;
+		const interval = setInterval(function (This: CMakeToolsIntegration) {
+			if (lc.state !== vscodelc.State.Running) return;
+
+			lc.sendNotification(
+				protocol.DidChangeConfigurationRequest.type, request);
+			clearInterval(interval);
+		}, CLANGD_WAIT_TIME_MS, this);
 	}
 }
