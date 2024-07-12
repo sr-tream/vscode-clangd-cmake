@@ -49,23 +49,32 @@ namespace protocol {
 	}
 } // namespace protocol
 
-
+enum CompileArgsSource {
+	lsp = 'lsp',
+	filesystem = 'filesystem',
+	both = ''
+};
 
 class CMakeToolsIntegration implements vscode.Disposable {
 	private projectChange: vscode.Disposable = { dispose() { } };
 	private codeModelChange: vscode.Disposable | undefined;
+	private configChange: vscode.Disposable = { dispose() { } };
 	private cmakeTools: api.CMakeToolsApi | undefined;
 	private project: api.Project | undefined;
 	private codeModel: Map<string, protocol.ClangdCompileCommand> | undefined;
 	private clangd: ClangdApiV1 | undefined;
 	private clangResourceDir: string = '';
 	private buildDirectory: string = '';
+	private compileArgsFrom: CompileArgsSource = CompileArgsSource.both;
 	private restarting = false;
 
 	constructor() {
 		let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
 		if (cmakeTools === undefined)
 			return;
+
+		this.updateCompileArgsSource();
+		this.configChange = vscode.workspace.onDidChangeConfiguration(this.onUpdateConfiguration, this);
 
 		cmakeTools.then(api => {
 			this.cmakeTools = api;
@@ -85,6 +94,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		if (this.codeModelChange !== undefined)
 			this.codeModelChange.dispose();
 		this.projectChange.dispose();
+		this.configChange.dispose();
 	}
 
 	async getClangd() {
@@ -214,18 +224,22 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			} else this.updateResourceDir();
 		}
 
+		if (this.compileArgsFrom === CompileArgsSource.filesystem) return;
+
 		let compileCommandsFiles = new Set<string>();
-		const compileCommandsPath = path.join(this.buildDirectory, 'compile_commands.json');
-		if (fs.existsSync(compileCommandsPath)) {
-			try {
-				const compileCommandsContent = fs.readFileSync(compileCommandsPath).toString();
-				const compileCommands = JSON.parse(compileCommandsContent);
-				for (const command of compileCommands) {
-					if (command.file !== undefined)
-						compileCommandsFiles.add(command.file);
+		if (this.compileArgsFrom !== CompileArgsSource.lsp) {
+			const compileCommandsPath = path.join(this.buildDirectory, 'compile_commands.json');
+			if (fs.existsSync(compileCommandsPath)) {
+				try {
+					const compileCommandsContent = fs.readFileSync(compileCommandsPath).toString();
+					const compileCommands = JSON.parse(compileCommandsContent);
+					for (const command of compileCommands) {
+						if (command.file !== undefined)
+							compileCommandsFiles.add(command.file);
+					}
+				} catch (error) {
+					// Ignore error
 				}
-			} catch (error) {
-				// Ignore error
 			}
 		}
 
@@ -279,7 +293,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 							const file = sourceDirectory.length != 0
 								? sourceDirectory + path.sep + source
 								: source;
-							if (compileCommandsFiles.has(file)) {
+							if (this.compileArgsFrom !== CompileArgsSource.lsp && compileCommandsFiles.has(file)) {
 								compileCommandsFiles.delete(file);
 								return;
 							}
@@ -331,5 +345,23 @@ class CMakeToolsIntegration implements vscode.Disposable {
 				protocol.DidChangeConfigurationRequest.type, request);
 			clearInterval(interval);
 		}, CLANGD_WAIT_TIME_MS, this);
+	}
+
+	private updateCompileArgsSource() {
+		const config = vscode.workspace.getConfiguration('clangd');
+		const args = config.get<string[]>('arguments', []);
+
+		const ArgId = args.indexOf('--compile_args_from=');
+		if (ArgId === -1) {
+			this.compileArgsFrom = CompileArgsSource.both;
+			return;
+		}
+
+		const value = args[ArgId].split('=')[1];
+		this.compileArgsFrom = value as CompileArgsSource;
+	}
+
+	private async onUpdateConfiguration(event: vscode.ConfigurationChangeEvent) {
+		if (event.affectsConfiguration('clangd.arguments')) this.updateCompileArgsSource();
 	}
 }
