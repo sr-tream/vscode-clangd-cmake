@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as vscodelc from 'vscode-languageclient/node';
+import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 
@@ -58,6 +59,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	private codeModel: Map<string, protocol.ClangdCompileCommand> | undefined;
 	private clangd: ClangdApiV1 | undefined;
 	private clangResourceDir: string = '';
+	private buildDirectory: string = '';
 	private restarting = false;
 
 	constructor() {
@@ -108,9 +110,12 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 		this.cmakeTools?.getProject(path).then(project => {
 			this.project = project;
-			this.codeModelChange =
-				this.project?.onCodeModelChanged(this.onCodeModelChanged, this);
-			this.onCodeModelChanged();
+			this.project?.getBuildDirectory().then(buildDirectory => {
+				this.buildDirectory = buildDirectory ? buildDirectory : path.fsPath;
+				this.codeModelChange =
+					this.project?.onCodeModelChanged(this.onCodeModelChanged, this);
+				this.onCodeModelChanged();
+			});
 		});
 	}
 
@@ -209,6 +214,21 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			} else this.updateResourceDir();
 		}
 
+		let compileCommandsFiles = new Set<string>();
+		const compileCommandsPath = path.join(this.buildDirectory, 'compile_commands.json');
+		if (fs.existsSync(compileCommandsPath)) {
+			try {
+				const compileCommandsContent = fs.readFileSync(compileCommandsPath).toString();
+				const compileCommands = JSON.parse(compileCommandsContent);
+				for (const command of compileCommands) {
+					if (command.file !== undefined)
+						compileCommandsFiles.add(command.file);
+				}
+			} catch (error) {
+				// Ignore error
+			}
+		}
+
 		const request: protocol.DidChangeConfigurationParams = {
 			settings: { compilationDatabaseChanges: {} }
 		};
@@ -259,6 +279,10 @@ class CMakeToolsIntegration implements vscode.Disposable {
 							const file = sourceDirectory.length != 0
 								? sourceDirectory + path.sep + source
 								: source;
+							if (compileCommandsFiles.has(file)) {
+								compileCommandsFiles.delete(file);
+								return;
+							}
 							const command: protocol.ClangdCompileCommand = {
 								workingDirectory: sourceDirectory,
 								compilationCommand: commandLine
