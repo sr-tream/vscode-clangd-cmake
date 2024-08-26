@@ -351,13 +351,13 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		const config = vscode.workspace.getConfiguration('clangd');
 		const args = config.get<string[]>('arguments', []);
 
-		const ArgId = args.indexOf('--compile_args_from=');
-		if (ArgId === -1) {
+		const compileArgsFromValue = args.find((value) => value.startsWith('--compile_args_from='));
+		if (compileArgsFromValue === undefined) {
 			this.compileArgsFrom = CompileArgsSource.both;
 			return;
 		}
 
-		const value = args[ArgId].split('=')[1];
+		const value = compileArgsFromValue.split('=')[1];
 		this.compileArgsFrom = value as CompileArgsSource;
 	}
 
