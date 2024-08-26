@@ -276,10 +276,6 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			}
 		}
 
-		const request: protocol.DidChangeConfigurationParams = {
-			settings: { compilationDatabaseChanges: {} }
-		};
-
 		let codeModelChanges: Map<string, protocol.ClangdCompileCommand> =
 			new Map();
 		content.configurations.forEach(configuration => {
@@ -364,20 +360,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		if (codeModelChanges.size === 0)
 			return;
 
-		codeModelChanges.forEach(
-			(cc, file) => {
-				Object.assign(
-					request.settings.compilationDatabaseChanges, { [file]: cc })
-			});
-
-		const lc = (await this.getClangd()).languageClient;
-		const interval = setInterval(function (This: CMakeToolsIntegration) {
-			if (lc.state !== vscodelc.State.Running) return;
-
-			lc.sendNotification(
-				protocol.DidChangeConfigurationRequest.type, request);
-			clearInterval(interval);
-		}, CLANGD_WAIT_TIME_MS, this);
+		this.waitClangdStartedAndConfigure();
 	}
 
 	private updateCompileArgsSource() {
