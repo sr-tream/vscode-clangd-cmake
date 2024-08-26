@@ -73,6 +73,8 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		if (cmakeTools === undefined)
 			return;
 
+		this.monitorClangdRestarts();
+
 		this.updateCompileArgsSource();
 		this.configChange = vscode.workspace.onDidChangeConfiguration(this.onUpdateConfiguration, this);
 
@@ -134,28 +136,59 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			return;
 
 		vscode.commands.executeCommand('clangd.restart');
-		const interval = setInterval(async function (This: CMakeToolsIntegration) {
-			if (This.codeModel !== undefined) {
+		// monitorClangdRestarts() will detect the restart and reconfigure the new clangd instance
+		// using waitClangdStartedAndConfigure().
+	}
+
+	// Monitor when the language server is restarted, to re-send compilation database
+	async monitorClangdRestarts() {
+		const clangd = await this.getClangd();
+
+		clangd.languageClient.onDidChangeState(async ({ newState }) => {
+			if (newState === vscodelc.State.Stopped) {
+				// Wait for the clangd server to be running again.
+				await this.waitClangdStartedAndConfigure();
+
+				// Monitor future restarts of this clangd instance.
+				// This is not done in waitClangdStartedAndConfigure to avoid registering
+				// duplicate event handlers with onDidChangeState().
+				this.monitorClangdRestarts();
+			}
+		});
+	}
+
+	// Wait for clangd server to be started and resend configuration
+	waitClangdStartedAndConfigure() {
+		return new Promise<void>((resolve) => {
+			const interval = setInterval(async function (This: CMakeToolsIntegration) {
 				const lc = (await This.getClangd()).languageClient;
+
+				// Language server not yet started, don't stop the timer and retry later
 				if (lc.state != vscodelc.State.Running) {
 					return;
 				}
-				const request: protocol.DidChangeConfigurationParams = {
-					settings: { compilationDatabaseChanges: {} }
-				};
 
-				This.codeModel.forEach(
-					(cc, file) => {
-						Object.assign(
-							request.settings.compilationDatabaseChanges, { [file]: cc })
-					});
+				// If we have a codeModel, send compilation database updates via LSP protocol
+				if (This.codeModel !== undefined) {
+					const request: protocol.DidChangeConfigurationParams = {
+						settings: { compilationDatabaseChanges: {} }
+					};
 
-				lc.sendNotification(
-					protocol.DidChangeConfigurationRequest.type, request);
-			}
-			This.restarting = false;
-			clearInterval(interval);
-		}, CLANGD_WAIT_TIME_MS, this);
+					This.codeModel.forEach(
+						(cc, file) => {
+							Object.assign(
+								request.settings.compilationDatabaseChanges, { [file]: cc })
+						});
+
+					lc.sendNotification(
+						protocol.DidChangeConfigurationRequest.type, request);
+				}
+
+				This.restarting = false;
+				clearInterval(interval);
+				resolve();
+			}, CLANGD_WAIT_TIME_MS, this);
+		});
 	}
 
 	async restartClangd() {
