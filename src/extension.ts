@@ -243,8 +243,14 @@ class CMakeToolsIntegration implements vscode.Disposable {
 					.toLowerCase();
 			if (compilerName.endsWith('.exe'))
 				compilerName = compilerName.substring(0, compilerName.length - 4);
-			if (compilerName.indexOf('clang') !== -1 || compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1) {
-				exec(`${firstCompiler.path} -print-file-name=`,
+
+			let args: string | undefined;
+			if (compilerName.indexOf('clang') !== -1 || compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1)
+				args = "-print-file-name=";
+			else if (compilerName.indexOf('zig') !== -1)
+				args = "c++ -print-file-name="; // Zig calling clang/clang++ for cc/c++ dropin replacement. clang and clang++ returns same path
+			if (args !== undefined) {
+				exec(`${firstCompiler.path} ${args}`,
 					(error, stdout, stderr) => {
 						if (error) {
 							this.updateResourceDir();
