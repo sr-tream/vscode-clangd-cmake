@@ -243,7 +243,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 					.toLowerCase();
 			if (compilerName.endsWith('.exe'))
 				compilerName = compilerName.substring(0, compilerName.length - 4);
-			if (compilerName.indexOf('clang') !== -1) {
+			if (compilerName.indexOf('clang') !== -1 || compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1) {
 				exec(`${firstCompiler.path} -print-file-name=`,
 					(error, stdout, stderr) => {
 						if (error) {
