@@ -5,7 +5,7 @@
   "author": "SR_team",
   "publisher": "sr-team",
   "license": "MIT",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "repository": {
     "type": "git",
     "url": "https://github.com/sr-tream/vscode-clangd-cmake.git"
@@ -41,6 +41,11 @@
       "title": "clangd: CMake integration",
       "properties": {
         "clangd.resourceDir.passForClangToolchains": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server."
+        },
+        "clangd.resourceDir.passForGccToolchains": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server."

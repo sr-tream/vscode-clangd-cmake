@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import * as vscodelc from 'vscode-languageclient/node';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,9 +12,14 @@ const CLANGD_EXTENSION = 'llvm-vs-code-extensions.vscode-clangd';
 const CLANGD_API_VERSION = 1;
 const CLANGD_WAIT_TIME_MS = 200;
 
+let WAIT_TO_CHECK_WRITING = 10;
+
 let integrationInstance: CMakeToolsIntegration | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
+	const hash = crypto.createHash('md5').update(context.extension.id).digest('hex');
+	WAIT_TO_CHECK_WRITING = (parseInt(hash, 16) % 1000) + 10;
+
 	integrationInstance = new CMakeToolsIntegration();
 }
 
@@ -201,7 +207,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		}, CLANGD_WAIT_TIME_MS * 10, this);
 	}
 
-	async updateResourceDir(path?: string) {
+	async updateResourceDir(path?: string): Promise<void> {
 		if (path === undefined) path = '';
 
 		if (path === this.clangResourceDir) return;
@@ -224,9 +230,30 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			args.push("--resource-dir=" + path);
 		}
 
-		config.update('arguments', args, vscode.ConfigurationTarget.Workspace).then(() => {
-			this.restartClangd();
-		});
+		await config.update('arguments', args, vscode.ConfigurationTarget.Workspace);
+		await CMakeToolsIntegration.sleep(WAIT_TO_CHECK_WRITING);
+		if (!CMakeToolsIntegration.isEqual(args, vscode.workspace.getConfiguration("clangd").get<string[]>('arguments', []))) {
+			path = this.clangResourceDir;
+			this.clangResourceDir = '';
+			return this.updateResourceDir(path);
+		}
+
+		this.restartClangd();
+	}
+
+	private static isEqual(lhs: string[], rhs: string[]): boolean {
+		if (lhs.length !== rhs.length)
+			return false;
+
+		for (const arg of lhs) {
+			if (rhs.indexOf(arg) === -1)
+				return false;
+		}
+		return true;
+	}
+
+	private static async sleep(ms: number): Promise<void> {
+		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
 	async onCodeModelChanged() {
