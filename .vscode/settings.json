@@ -1,0 +1,26 @@
+{
+    "clangd.arguments": [
+        "--background-index=1",
+        "--header-insertion=never",
+        "-j=15",
+        "--header-insertion-decorators=1",
+        "--clang-tidy=1",
+        "--limit-references=0",
+        "--limit-results=0",
+        "--function-arg-placeholders=0",
+        "--ranking-model=heuristics",
+        "--use-dirty-headers=1",
+        "--pch-storage=disk",
+        "--completion-parse=always",
+        "--all-scopes-completion=0",
+        "--rename-file-limit=200",
+        "--completion-style=detailed",
+        "--include-ineligible-results=0",
+        "--background-index-priority=background",
+        "--debug-origin=0",
+        "--fallback-style=LLVM",
+        "--import-insertions=0",
+        "--malloc-trim=1",
+        "--parse-forwarding-functions=1"
+    ]
+}

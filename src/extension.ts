@@ -208,17 +208,21 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		this.clangResourceDir = path;
 
 		let config = vscode.workspace.getConfiguration('clangd');
-		if (!config.get<boolean>('resourceDir.passForClangToolchains', false))
-			return;
-
 		let args = config.get<string[]>('arguments', []);
+
 		let curResourceDirArgIndex = args.findIndex(arg => arg.trimStart().startsWith("--resource-dir="));
 		if (curResourceDirArgIndex >= 0) {
 			let curResourceDir = args[curResourceDirArgIndex].trimStart().substring("--resource-dir=".length).trim();
 			if (curResourceDir === path) return;
-			args[curResourceDirArgIndex] = "--resource-dir=" + path;
-		} else
+
+			if (path === '')
+				args = args.slice(curResourceDirArgIndex, 1);
+			else
+				args[curResourceDirArgIndex] = "--resource-dir=" + path;
+		} else {
+			if (path === '') return;
 			args.push("--resource-dir=" + path);
+		}
 
 		config.update('arguments', args, vscode.ConfigurationTarget.Workspace).then(() => {
 			this.restartClangd();
@@ -244,10 +248,16 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			if (compilerName.endsWith('.exe'))
 				compilerName = compilerName.substring(0, compilerName.length - 4);
 
+			let config = vscode.workspace.getConfiguration('clangd.resourceDir');
+			const passForClangToolchains = config.get<boolean>('passForClangToolchains', false);
+			const passForGccToolchains = config.get<boolean>('passForGccToolchains', false);
+
 			let args: string | undefined;
-			if (compilerName.indexOf('clang') !== -1 || compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1)
+			if (passForClangToolchains && compilerName.indexOf('clang') !== -1)
 				args = "-print-file-name=";
-			else if (compilerName.indexOf('zig') !== -1)
+			else if (passForGccToolchains && (compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1))
+				args = "-print-file-name=";
+			else if (passForClangToolchains && compilerName.indexOf('zig') !== -1)
 				args = "c++ -print-file-name="; // Zig calling clang/clang++ for cc/c++ dropin replacement. clang and clang++ returns same path
 			if (args !== undefined) {
 				exec(`${firstCompiler.path} ${args}`,
