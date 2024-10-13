@@ -40,15 +40,29 @@
       "type": "object",
       "title": "clangd: CMake integration",
       "properties": {
+        "clangd.useBinaryFromToolchain": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Experimental**\n\nuse `clangd` binary from toolchain.\n\nThis option modifies workspace `clangd.path` setting and restarts clangd server.",
+          "order": 0
+        },
+        "clangd.pathFallback": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Fallback path to clangd binary for `clangd.useBinaryFromToolchain` setting.\n\nBy default this setting copying `clangd.path` to workspace settings.",
+          "order": 1
+        },
         "clangd.resourceDir.passForClangToolchains": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server."
+          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server.",
+          "order": 2
         },
         "clangd.resourceDir.passForGccToolchains": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server."
+          "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server.",
+          "order": 3
         }
       }
     }

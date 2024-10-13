@@ -72,7 +72,8 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	private clangResourceDir: string = '';
 	private buildDirectory: string = '';
 	private compileArgsFrom: CompileArgsSource = CompileArgsSource.both;
-	private restarting = false;
+	private restartingRequests: number = 0;
+	private restartingReady: number = 0;
 
 	constructor() {
 		let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
@@ -137,15 +138,6 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		});
 	}
 
-	public async doRestartClangd() {
-		if (!this.restarting)
-			return;
-
-		vscode.commands.executeCommand('clangd.restart');
-		// monitorClangdRestarts() will detect the restart and reconfigure the new clangd instance
-		// using waitClangdStartedAndConfigure().
-	}
-
 	// Monitor when the language server is restarted, to re-send compilation database
 	async monitorClangdRestarts() {
 		const clangd = await this.getClangd();
@@ -167,10 +159,23 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	waitClangdStartedAndConfigure() {
 		return new Promise<void>((resolve) => {
 			const interval = setInterval(async function (This: CMakeToolsIntegration) {
+				// Wait until configurations updated to restart clangd
+				if (This.restartingRequests !== This.restartingReady) return;
+
 				const lc = (await This.getClangd()).languageClient;
 
 				// Language server not yet started, don't stop the timer and retry later
 				if (lc.state != vscodelc.State.Running) {
+					This.restartingRequests = 0;
+					This.restartingReady = 0;
+					return;
+				}
+
+				// Restart clangd if needed
+				if (This.restartingReady > 0) {
+					await vscode.commands.executeCommand('clangd.restart');
+					This.restartingRequests = 0;
+					This.restartingReady = 0;
 					return;
 				}
 
@@ -190,21 +195,10 @@ class CMakeToolsIntegration implements vscode.Disposable {
 						protocol.DidChangeConfigurationRequest.type, request);
 				}
 
-				This.restarting = false;
 				clearInterval(interval);
 				resolve();
 			}, CLANGD_WAIT_TIME_MS, this);
 		});
-	}
-
-	async restartClangd() {
-		if (this.restarting)
-			return;
-
-		this.restarting = true;
-		setTimeout(function (This: CMakeToolsIntegration) {
-			This.doRestartClangd();
-		}, CLANGD_WAIT_TIME_MS * 10, this);
 	}
 
 	async updateResourceDir(path?: string): Promise<void> {
@@ -222,7 +216,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			if (curResourceDir === path) return;
 
 			if (path === '')
-				args = args.slice(curResourceDirArgIndex, 1);
+				args.splice(curResourceDirArgIndex, 1);
 			else
 				args[curResourceDirArgIndex] = "--resource-dir=" + path;
 		} else {
@@ -230,15 +224,18 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			args.push("--resource-dir=" + path);
 		}
 
+		this.restartingRequests++;
 		await config.update('arguments', args, vscode.ConfigurationTarget.Workspace);
 		await CMakeToolsIntegration.sleep(WAIT_TO_CHECK_WRITING);
 		if (!CMakeToolsIntegration.isEqual(args, vscode.workspace.getConfiguration("clangd").get<string[]>('arguments', []))) {
 			path = this.clangResourceDir;
 			this.clangResourceDir = '';
-			return this.updateResourceDir(path);
+			await this.updateResourceDir(path);
+			this.restartingRequests--;
+			return;
 		}
 
-		this.restartClangd();
+		this.restartingReady++;
 	}
 
 	private static isEqual(lhs: string[], rhs: string[]): boolean {
@@ -275,10 +272,36 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			if (compilerName.endsWith('.exe'))
 				compilerName = compilerName.substring(0, compilerName.length - 4);
 
-			let config = vscode.workspace.getConfiguration('clangd.resourceDir');
-			const passForClangToolchains = config.get<boolean>('passForClangToolchains', false);
-			const passForGccToolchains = config.get<boolean>('passForGccToolchains', false);
+			let config = vscode.workspace.getConfiguration('clangd');
+			const clangdFromToolchain = config.get<boolean>('useBinaryFromToolchain', false);
+			if (clangdFromToolchain) {
+				const binPath = firstCompiler.path.substring(0, firstCompiler.path.lastIndexOf(path.sep));
+				const clangdPath = path.join(binPath, 'clangd');
 
+				const exePath = config.get<string>('path');
+				const fbPath = config.get<string>('pathFallback', '');
+
+				if (fs.existsSync(clangdPath)) {
+					if (fbPath == '') {
+						const path = config.inspect<string>('path');
+						if (path?.globalValue !== undefined)
+							config.update('pathFallback', path.globalValue, vscode.ConfigurationTarget.Workspace);
+						else if (path?.defaultValue !== undefined)
+							config.update('pathFallback', path.defaultValue, vscode.ConfigurationTarget.Workspace);
+					}
+
+					if (clangdPath !== exePath) {
+						this.restartingRequests++;
+						config.update('path', clangdPath, vscode.ConfigurationTarget.Workspace).then(() => this.restartingReady++);
+					}
+				} else if (fbPath !== '' && fbPath !== exePath) {
+					this.restartingRequests++;
+					config.update('path', fbPath, vscode.ConfigurationTarget.Workspace).then(() => this.restartingReady++);
+				}
+			}
+
+			const passForClangToolchains = config.get<boolean>('resourceDir.passForClangToolchains', false);
+			const passForGccToolchains = config.get<boolean>('resourceDir.passForGccToolchains', false);
 			let args: string | undefined;
 			if (passForClangToolchains && compilerName.indexOf('clang') !== -1)
 				args = "-print-file-name=";
