@@ -4,6 +4,7 @@
   "description": "Add CMake integration for clangd",
   "author": "SR_team",
   "publisher": "sr-team",
+  "icon": "logo.png",
   "license": "MIT",
   "version": "0.0.9",
   "repository": {
