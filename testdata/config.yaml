@@ -1,0 +1,18 @@
+---
+If:
+  PathMatch: [src/.*\.inl$, src/.*\.inc$]
+CompileFlags:
+  Add: [-xc++-header, -D_CLANGD]
+  CompilationDatabase: "/database/for/inlines"
+
+---
+If:
+  PathMatch: include/.*\.h(h|pp|xx)?$
+  PathExclude: include/pch.h$
+CompileFlags:
+  Add: [-xc++-header, --include=include/pch.h]
+  CompilationDatabase: '/database/for/headers'
+
+---
+CompileFlags:
+  CompilationDatabase: /database/for/sources
