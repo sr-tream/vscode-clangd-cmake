@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 
 import * as api from 'vscode-cmake-tools';
 import type { ClangdApiV1, ClangdExtension } from '@clangd/vscode-clangd';
+import { CompileCommands } from './compile_commands';
 
 const CLANGD_EXTENSION = 'llvm-vs-code-extensions.vscode-clangd';
 const CLANGD_API_VERSION = 1;
@@ -70,10 +71,12 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	private codeModel: Map<string, protocol.ClangdCompileCommand> | undefined;
 	private clangd: ClangdApiV1 | undefined;
 	private clangResourceDir: string = '';
-	private buildDirectory: string = '';
 	private compileArgsFrom: CompileArgsSource = CompileArgsSource.both;
 	private restartingRequests: number = 0;
 	private restartingReady: number = 0;
+	private compileCommands: CompileCommands | undefined;
+	private parsedCompileCommands = new Set<string>();
+	private filesInCompileCommands = new Set<string>();
 
 	constructor() {
 		let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
@@ -100,10 +103,12 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		});
 	}
 	dispose() {
-		if (this.codeModelChange !== undefined)
-			this.codeModelChange.dispose();
+		this.codeModelChange?.dispose();
 		this.projectChange.dispose();
 		this.configChange.dispose();
+		this.compileCommands?.dispose();
+		this.parsedCompileCommands.clear();
+		this.filesInCompileCommands.clear();
 	}
 
 	async getClangd() {
@@ -123,18 +128,23 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			this.codeModelChange.dispose();
 			this.codeModelChange = undefined;
 		}
+		if (this.compileCommands !== undefined) {
+			this.compileCommands.dispose();
+			this.compileCommands = undefined;
+		}
+		this.parsedCompileCommands.clear();
+		this.filesInCompileCommands.clear();
 
 		if (path === undefined)
 			return;
 
+		this.compileCommands = new CompileCommands(path);
+
 		this.cmakeTools?.getProject(path).then(project => {
 			this.project = project;
-			this.project?.getBuildDirectory().then(buildDirectory => {
-				this.buildDirectory = buildDirectory ? buildDirectory : path.fsPath;
-				this.codeModelChange =
-					this.project?.onCodeModelChanged(this.onCodeModelChanged, this);
-				this.onCodeModelChanged();
-			});
+			this.codeModelChange =
+				this.project?.onCodeModelChanged(this.onCodeModelChanged, this);
+			this.onCodeModelChanged();
 		});
 	}
 
@@ -253,6 +263,34 @@ class CMakeToolsIntegration implements vscode.Disposable {
 		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
+	private isFilePresentInCompileCommands(filePath: string): boolean {
+		if (this.filesInCompileCommands.has(filePath))
+			return true;
+
+		if (this.compileCommands === undefined)
+			return false;
+
+		const compileCommandsPath = this.compileCommands.findCompileCommands(filePath);
+		if (compileCommandsPath === undefined)
+			return false;
+
+		if (!this.parsedCompileCommands.has(compileCommandsPath)) {
+			try {
+				const compileCommandsContent = fs.readFileSync(compileCommandsPath).toString();
+				const compileCommands = JSON.parse(compileCommandsContent);
+				for (const command of compileCommands) {
+					if (command.file !== undefined)
+						this.filesInCompileCommands.add(command.file);
+				}
+			} catch (error) {
+				// Ignore error
+			}
+			this.parsedCompileCommands.add(compileCommandsPath);
+		}
+
+		return this.filesInCompileCommands.has(filePath);
+	}
+
 	async onCodeModelChanged() {
 		const content = this.project?.codeModel;
 		if (content === undefined)
@@ -325,23 +363,6 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 		if (this.compileArgsFrom === CompileArgsSource.filesystem) return;
 
-		let compileCommandsFiles = new Set<string>();
-		if (this.compileArgsFrom !== CompileArgsSource.lsp) {
-			const compileCommandsPath = path.join(this.buildDirectory, 'compile_commands.json');
-			if (fs.existsSync(compileCommandsPath)) {
-				try {
-					const compileCommandsContent = fs.readFileSync(compileCommandsPath).toString();
-					const compileCommands = JSON.parse(compileCommandsContent);
-					for (const command of compileCommands) {
-						if (command.file !== undefined)
-							compileCommandsFiles.add(command.file);
-					}
-				} catch (error) {
-					// Ignore error
-				}
-			}
-		}
-
 		let codeModelChanges: Map<string, protocol.ClangdCompileCommand> =
 			new Map();
 		content.configurations.forEach(configuration => {
@@ -388,10 +409,9 @@ class CMakeToolsIntegration implements vscode.Disposable {
 							const file = sourceDirectory.length != 0
 								? sourceDirectory + path.sep + source
 								: source;
-							if (this.compileArgsFrom !== CompileArgsSource.lsp && compileCommandsFiles.has(file)) {
-								compileCommandsFiles.delete(file);
+							if (this.compileArgsFrom !== CompileArgsSource.lsp && this.isFilePresentInCompileCommands(file))
 								return;
-							}
+
 							const command: protocol.ClangdCompileCommand = {
 								workingDirectory: sourceDirectory,
 								compilationCommand: commandLine
