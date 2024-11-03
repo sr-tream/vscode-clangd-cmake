@@ -399,7 +399,11 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 						fileGroup.compileCommandFragments?.forEach(commands => {
 							commands.split(/\s/g).forEach(
-								command => { commandLine.push(command); });
+								command => {
+									if (!commandLine.includes(command)) {
+										commandLine.push(command);
+									}
+								});
 						});
 						fileGroup.includePath?.forEach(
 							include => { commandLine.push(`${incFlag}${include.path}`); });
