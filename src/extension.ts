@@ -371,9 +371,6 @@ class CMakeToolsIntegration implements vscode.Disposable {
 				project.targets.forEach(target => {
 					if (target.sourceDirectory !== undefined)
 						sourceDirectory = target.sourceDirectory;
-					let commandLine: string[] = [];
-					if (target.sysroot !== undefined)
-						commandLine.push(`--sysroot=${target.sysroot}`);
 					target.fileGroups?.forEach(fileGroup => {
 						if (fileGroup.language === undefined)
 							return;
@@ -382,7 +379,12 @@ class CMakeToolsIntegration implements vscode.Disposable {
 						if (compiler === undefined)
 							return;
 
-						commandLine.unshift(compiler.path);
+						let commandLine: string[] = [];
+						commandLine.push(compiler.path);
+
+						if (target.sysroot !== undefined)
+							commandLine.push(`--sysroot=${target.sysroot}`);
+
 						if (compiler.target !== undefined)
 							commandLine.push(`--target=${compiler.target}`);
 
@@ -399,11 +401,7 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 						fileGroup.compileCommandFragments?.forEach(commands => {
 							commands.split(/\s/g).forEach(
-								command => {
-									if (!commandLine.includes(command)) {
-										commandLine.push(command);
-									}
-								});
+								command => { commandLine.push(command); });
 						});
 						fileGroup.includePath?.forEach(
 							include => { commandLine.push(`${incFlag}${include.path}`); });
