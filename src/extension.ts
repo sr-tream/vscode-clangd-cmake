@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 
-import * as api from 'vscode-cmake-tools';
+import type * as api from 'vscode-cmake-tools';
 import type { ClangdApiV1, ClangdExtension } from '@clangd/vscode-clangd';
 import { CompileCommands } from './compile_commands';
 
@@ -79,17 +79,15 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	private filesInCompileCommands = new Set<string>();
 
 	constructor() {
-		let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
-		if (cmakeTools === undefined)
-			return;
+		const cmakeTools = CMakeToolsIntegration.resolveCMakeToolsApi();
 
 		this.monitorClangdRestarts();
 
 		this.updateCompileArgsSource();
 		this.configChange = vscode.workspace.onDidChangeConfiguration(this.onUpdateConfiguration, this);
 
-		cmakeTools.then(api => {
-			this.cmakeTools = api;
+		cmakeTools.then(cmakeApi => {
+			this.cmakeTools = cmakeApi;
 			if (this.cmakeTools === undefined)
 				return;
 
@@ -101,6 +99,20 @@ class CMakeToolsIntegration implements vscode.Disposable {
 				this.onActiveProjectChanged(projectUri);
 			}
 		});
+	}
+
+	private static async resolveCMakeToolsApi(): Promise<api.CMakeToolsApi | undefined> {
+		const config = vscode.workspace.getConfiguration('clangd');
+		const extensionId = config.get<string>('cmakeExtensionName', 'ms-vscode.cmake-tools');
+		const ext = vscode.extensions.getExtension<api.CMakeToolsExtensionExports>(extensionId);
+		if (!ext) {
+			vscode.window.showWarningMessage(
+				`clangd CMake integration: extension '${extensionId}' is not installed. ` +
+				`Install it or set 'clangd.cmakeExtensionName' to the correct extension ID.`);
+			return undefined;
+		}
+		const exports = await ext.activate();
+		return exports.getApi(1 as api.Version);
 	}
 	dispose() {
 		this.codeModelChange?.dispose();
@@ -467,5 +479,14 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 	private async onUpdateConfiguration(event: vscode.ConfigurationChangeEvent) {
 		if (event.affectsConfiguration('clangd.arguments')) this.updateCompileArgsSource();
+		if (event.affectsConfiguration('clangd.cmakeExtensionName')) {
+			vscode.window.showInformationMessage(
+				'clangd CMake integration: Reload the window to apply the new CMake Tools extension.',
+				'Reload Window'
+			).then(selection => {
+				if (selection === 'Reload Window')
+					vscode.commands.executeCommand('workbench.action.reloadWindow');
+			});
+		}
 	}
 }

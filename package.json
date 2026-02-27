@@ -6,7 +6,7 @@
   "publisher": "sr-team",
   "icon": "logo.png",
   "license": "MIT",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sr-tream/vscode-clangd-cmake.git"
@@ -64,6 +64,12 @@
           "default": false,
           "markdownDescription": "**Experimental**\n\nAdd path to resource dir to clangd command line arguments.\n\nThis option modifies workspace `clangd.arguments` setting and restarts clangd server.",
           "order": 3
+        },
+        "clangd.cmakeExtensionName": {
+          "type": "string",
+          "default": "ms-vscode.cmake-tools",
+          "markdownDescription": "Extension ID of the CMake Tools extension to integrate with.\n\nChange this to use a fork of CMake Tools (e.g. `ms-vscode.cmake-tools`). A window reload is required after changing this setting.",
+          "order": 4
         }
       }
     }
@@ -74,12 +80,12 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "package": "vsce package"
   },
   "dependencies": {
     "@clangd/vscode-clangd": "./vscode-clangd/api",
-    "vscode-languageclient": "8.0.2",
-    "vscode-cmake-tools": "^1.2.0"
+    "vscode-languageclient": "8.0.2"
   },
   "devDependencies": {
     "@types/vscode": "^1.65.0",
@@ -90,10 +96,11 @@
     "eslint": "^8.57.0",
     "typescript": "^5.4.5",
     "@vscode/test-cli": "^0.0.9",
-    "@vscode/test-electron": "^2.4.0"
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^2.15.0",
+    "vscode-cmake-tools": "^1.2.0"
   },
   "extensionDependencies": [
-    "llvm-vs-code-extensions.vscode-clangd",
-    "ms-vscode.cmake-tools"
+    "llvm-vs-code-extensions.vscode-clangd"
   ]
 }
