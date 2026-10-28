@@ -6,7 +6,7 @@
   "publisher": "sr-team",
   "icon": "logo.png",
   "license": "MIT",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/sr-tream/vscode-clangd-cmake.git"
@@ -81,7 +81,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "package": "vsce package"
+    "package": "vsce package",
+    "test:resource-dir": "npm run compile && node --test tests/resource-dir.test.cjs"
   },
   "dependencies": {
     "@clangd/vscode-clangd": "./vscode-clangd/api",

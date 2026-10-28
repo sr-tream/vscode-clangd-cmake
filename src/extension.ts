@@ -3,7 +3,8 @@ import * as crypto from 'crypto';
 import * as vscodelc from 'vscode-languageclient/node';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
+import { resourceDirQueryArgs } from './resource_dir';
 
 import type * as api from 'vscode-cmake-tools';
 import type { ClangdApiV1, ClangdExtension } from '@clangd/vscode-clangd';
@@ -226,11 +227,10 @@ class CMakeToolsIntegration implements vscode.Disposable {
 	async updateResourceDir(path?: string): Promise<void> {
 		if (path === undefined) path = '';
 
-		if (path === this.clangResourceDir) return;
 		this.clangResourceDir = path;
 
 		let config = vscode.workspace.getConfiguration('clangd');
-		let args = config.get<string[]>('arguments', []);
+		let args = [...config.get<string[]>('arguments', [])];
 
 		let curResourceDirArgIndex = args.findIndex(arg => arg.trimStart().startsWith("--resource-dir="));
 		if (curResourceDirArgIndex >= 0) {
@@ -315,13 +315,6 @@ class CMakeToolsIntegration implements vscode.Disposable {
 			content.toolchains.values().next().value as api.CodeModel.Toolchain ||
 			undefined;
 		if (firstCompiler !== undefined) {
-			let compilerName =
-				firstCompiler.path
-					.substring(firstCompiler.path.lastIndexOf(path.sep) + 1)
-					.toLowerCase();
-			if (compilerName.endsWith('.exe'))
-				compilerName = compilerName.substring(0, compilerName.length - 4);
-
 			let config = vscode.workspace.getConfiguration('clangd');
 			const clangdFromToolchain = config.get<boolean>('useBinaryFromToolchain', false);
 			if (clangdFromToolchain) {
@@ -352,25 +345,19 @@ class CMakeToolsIntegration implements vscode.Disposable {
 
 			const passForClangToolchains = config.get<boolean>('resourceDir.passForClangToolchains', false);
 			const passForGccToolchains = config.get<boolean>('resourceDir.passForGccToolchains', false);
-			let args: string | undefined;
-			if (passForClangToolchains && compilerName.indexOf('clang') !== -1)
-				args = "-print-file-name=";
-			else if (passForGccToolchains && (compilerName.indexOf('gcc') !== -1 || compilerName.indexOf('g++') !== -1))
-				args = "-print-file-name=";
-			else if (passForClangToolchains && compilerName.indexOf('zig') !== -1)
-				args = "c++ -print-file-name="; // Zig calling clang/clang++ for cc/c++ dropin replacement. clang and clang++ returns same path
+			const args = resourceDirQueryArgs(firstCompiler.path, process.platform,
+				passForClangToolchains, passForGccToolchains);
 			if (args !== undefined) {
-				exec(`${firstCompiler.path} ${args}`,
-					(error, stdout, stderr) => {
-						if (error) {
-							this.updateResourceDir();
-							return;
-						}
-						while (stdout.endsWith('\n') || stdout.endsWith('\r'))
-							stdout = stdout.slice(0, -1);
-						this.updateResourceDir(stdout);
-					});
-			} else this.updateResourceDir();
+				execFile(firstCompiler.path, args, { timeout: 10000 }, (error, stdout) => {
+					const resourceDir = stdout.trim();
+					// Reject empty/non-directory output instead of persisting a broken override.
+					const valid = !error && path.isAbsolute(resourceDir) &&
+						fs.existsSync(path.join(resourceDir, 'include', 'stdarg.h'));
+					void this.updateResourceDir(valid ? resourceDir : undefined);
+				});
+			} else {
+				void this.updateResourceDir();
+			}
 		}
 
 		if (this.compileArgsFrom === CompileArgsSource.filesystem) return;
